@@ -99,6 +99,11 @@ body {
     border-bottom: 1px solid gray;
 }
 
+.checkboxDiv.baseline input[type=checkbox]{
+    accent-color: gray;
+    filter: grayscale(1);
+}
+
 input[type=checkbox]{
     margin-right: 10px;
 }

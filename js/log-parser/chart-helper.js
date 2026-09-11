@@ -21,6 +21,14 @@ function addFileDiv(fileName, fileData){
             <img src="img/delete.png" width="20px" height="20px" style="margin-left: 10px"  alt="setting" onclick='removeLogClickHandler("` + fileName + `");'/>
         </div>
     `
+    let checkbox = div.querySelector('input[type=checkbox]');
+    let checkboxLabel = div.querySelector('.checkboxText');
+    function baselineDoubleClickHandler(e) {
+        e.preventDefault();
+        logParser.setBaseline(fileName);
+    }
+    checkbox.addEventListener('dblclick', baselineDoubleClickHandler);
+    checkboxLabel.addEventListener('dblclick', baselineDoubleClickHandler);
     div.addEventListener('mouseover', function (e) {
         setDataMaxMinMean(fileName, fileData);
     })
@@ -165,19 +173,34 @@ function updateParseKeyChart(files){
     }
 }
 
-function prepareComparisonChartData(comparisonData, comparisonType){
+function prepareComparisonChartData(comparisonEntries, comparisonType){
     let comparisonChartData = [];
-    for (let index in comparisonData){
+    for (let index in comparisonEntries){
+        let entry = comparisonEntries[index];
+        let comparisonData = entry.comparisonData;
+        let chartTitle = "Comparison " + comparisonType.replace("_", " ") + " Chart";
+        if(entry.file1Name != null && entry.file2Name != null){
+            if(entry.isBaseline){
+                if(entry.file1Name === entry.baselineFileName){
+                    chartTitle += ` (baseline: ${entry.file1Name} vs ${entry.file2Name})`;
+                }else{
+                    chartTitle += ` (${entry.file1Name} vs baseline: ${entry.file2Name})`;
+                }
+            }else{
+                chartTitle += ` (${entry.file1Name} vs ${entry.file2Name})`;
+            }
+        }
+
         let options = {
             zoomEnabled: true,
             animationEnabled: true,
-            title: {text: "Comparison " + comparisonType.replace("_", " ") + " Chart"},
+            title: {text: chartTitle},
             axisY: {lineThickness: 1},
             data: [{
                 name: "Error",
                 type: "line",
                 showInLegend: true,
-                dataPoints: comparisonData[index].getDataByComparisonType(comparisonType)
+                dataPoints: comparisonData.getDataByComparisonType(comparisonType)
             }]
         };
 
@@ -188,7 +211,7 @@ function prepareComparisonChartData(comparisonData, comparisonType){
                 showInLegend: true,
                 color: "FireBrick",
                 lineColor: "FireBrick",
-                dataPoints: comparisonData[index].relative_normal_baseline_positive
+                dataPoints: comparisonData.relative_normal_baseline_positive
             });
             options.data.push({
                 name: "Negative baseline",
@@ -196,7 +219,7 @@ function prepareComparisonChartData(comparisonData, comparisonType){
                 showInLegend: true,
                 color: "FireBrick",
                 lineColor: "FireBrick",
-                dataPoints: comparisonData[index].relative_normal_baseline_negative
+                dataPoints: comparisonData.relative_normal_baseline_negative
             });
         }else if(comparisonType === "relative_abs"){
             options.data.push({
@@ -205,28 +228,34 @@ function prepareComparisonChartData(comparisonData, comparisonType){
                 showInLegend: true,
                 color: "FireBrick",
                 lineColor: "FireBrick",
-                dataPoints: comparisonData[index].relative_abs_baseline
+                dataPoints: comparisonData.relative_abs_baseline
             });
         }
-        let meanErrorInfo = comparisonData[index].getMeanErrorInfo(comparisonType);
-        comparisonChartData.push({chartOptions: options, meanErrorInfo: meanErrorInfo});
+
+        let meanErrorInfo = comparisonData.getMeanErrorInfo(comparisonType);
+        comparisonChartData.push({
+            keyIndex: entry.keyIndex,
+            chartOptions: options,
+            meanErrorInfo: meanErrorInfo
+        });
     }
     return comparisonChartData;
 }
 
-function updateComparisonChart(comparisonData, comparisonType){
+function updateComparisonChart(comparisonEntries, comparisonType){
     let lossCharts = document.getElementById("lossCharts");
-    let comparisonChartData = prepareComparisonChartData(comparisonData, comparisonType);
-    for(let index in comparisonData){
-        let parseKeyDiv = lossCharts.querySelector(`div[name="parseKeyDiv${index}"]`)
+    let comparisonChartData = prepareComparisonChartData(comparisonEntries, comparisonType);
+    for(let index in comparisonChartData){
+        let chartData = comparisonChartData[index];
+        let parseKeyDiv = lossCharts.querySelector(`div[name="parseKeyDiv${chartData["keyIndex"]}"]`)
         if(parseKeyDiv != null){
             let chartDiv = document.createElement("div");
             chartDiv.classList.add("parseKeyChartDiv");
             parseKeyDiv.appendChild(chartDiv);
-            new CanvasJS.Chart(chartDiv, comparisonChartData[index]["chartOptions"]).render();
+            new CanvasJS.Chart(chartDiv, chartData["chartOptions"]).render();
 
             let meanErrorDiv = document.createElement("div");
-            meanErrorDiv.innerText = comparisonChartData[index]["meanErrorInfo"];
+            meanErrorDiv.innerText = chartData["meanErrorInfo"];
             meanErrorDiv.classList.add("meanError");
             parseKeyDiv.appendChild(meanErrorDiv);
         }

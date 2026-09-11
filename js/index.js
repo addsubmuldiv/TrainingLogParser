@@ -89,6 +89,7 @@ class LogParser {
         this.comparisonType = 'normal';
         this.reverseComparison = false;
         this.relative_baseline = 0.02;
+        this.baselineFileName = null;
 
         let cookies = document.cookie.split(';');
         for (let i in cookies) {
@@ -125,8 +126,50 @@ class LogParser {
     }
 
     updateFileVisible(fileName, visible){
-        this.files[fileName].visible = visible;
+        if(fileName === this.baselineFileName){
+            this.files[fileName].visible = true;
+        }else{
+            this.files[fileName].visible = visible;
+        }
         this.updateChart();
+    }
+
+    setBaseline(fileName){
+        if(!(fileName in this.files)){
+            return;
+        }
+
+        if(this.baselineFileName === fileName){
+            this.baselineFileName = null;
+        }else{
+            this.baselineFileName = fileName;
+            this.files[fileName].visible = true;
+        }
+
+        this.updateChart();
+    }
+
+    updateBaselineUI(){
+        for(let fileName in this.files){
+            let checkboxDiv = document.getElementById("selectLog_" + fileName);
+            if(checkboxDiv == null){
+                continue;
+            }
+
+            let checkbox = checkboxDiv.querySelector('input[type=checkbox]');
+            if(fileName === this.baselineFileName){
+                checkboxDiv.classList.add("baseline");
+                if(checkbox != null){
+                    checkbox.checked = true;
+                    checkbox.title = "Baseline";
+                }
+            }else{
+                checkboxDiv.classList.remove("baseline");
+                if(checkbox != null){
+                    checkbox.title = "";
+                }
+            }
+        }
     }
 
     getInitParseKeys(fileName){
@@ -235,31 +278,85 @@ class LogParser {
     }
 
     processComparisonData(){
-        let comparisonDatas = []
-        let comparisonFiles = []
+        let comparisonEntries = [];
+
+        if (isDisableComparison()){
+            return comparisonEntries;
+        }
+
+        let visibleFiles = [];
         for(let fileName in this.files){
             if(this.files[fileName].visible){
-                comparisonFiles.push(this.files[fileName]);
+                visibleFiles.push(this.files[fileName]);
             }
         }
-        if(comparisonFiles.length === 2 && !isDisableComparison()){
-            comparisonFiles.sort();
-            if (this.reverseComparison){
-                comparisonFiles = comparisonFiles.reverse()
-            }
-            let comparisonStep = getComparisonStep();
-            let noZero = isNoZero();
 
-            let keyLength = Math.min(comparisonFiles[0].parsedKeys.length, comparisonFiles[1].parsedKeys.length)
+        if(visibleFiles.length < 2){
+            return comparisonEntries;
+        }
+
+        visibleFiles.sort((a, b) => a.fileName.localeCompare(b.fileName));
+
+        let comparisonStep = getComparisonStep();
+        let noZero = isNoZero();
+
+        if(this.baselineFileName != null && (this.baselineFileName in this.files)){
+            let baselineFile = this.files[this.baselineFileName];
+            for(let targetFile of visibleFiles){
+                if(targetFile.fileName === baselineFile.fileName){
+                    continue;
+                }
+
+                let file1 = targetFile;
+                let file2 = baselineFile;
+                if(this.reverseComparison){
+                    file1 = baselineFile;
+                    file2 = targetFile;
+                }
+
+                let keyLength = Math.min(baselineFile.parsedKeys.length, targetFile.parsedKeys.length);
+                for(let index=0; index<keyLength; index++){
+                    comparisonEntries.push({
+                        keyIndex: index,
+                        file1Name: file1.fileName,
+                        file2Name: file2.fileName,
+                        baselineFileName: baselineFile.fileName,
+                        isBaseline: true,
+                        comparisonData: new ComparisonData(
+                            file1.keyDatas[file1.parsedKeys[index]],
+                            file2.keyDatas[file2.parsedKeys[index]],
+                            comparisonStep, this.relative_baseline, noZero
+                        )
+                    });
+                }
+            }
+            return comparisonEntries;
+        }
+
+        if(visibleFiles.length === 2){
+            visibleFiles.sort((a, b) => a.fileName.localeCompare(b.fileName));
+            if(this.reverseComparison){
+                visibleFiles.reverse();
+            }
+
+            let keyLength = Math.min(visibleFiles[0].parsedKeys.length, visibleFiles[1].parsedKeys.length);
             for(let index=0; index<keyLength; index++){
-                comparisonDatas.push(new ComparisonData(
-                    comparisonFiles[0].keyDatas[comparisonFiles[0].parsedKeys[index]],
-                    comparisonFiles[1].keyDatas[comparisonFiles[1].parsedKeys[index]],
-                    comparisonStep, this.relative_baseline, noZero
-                ));
+                comparisonEntries.push({
+                    keyIndex: index,
+                    file1Name: visibleFiles[0].fileName,
+                    file2Name: visibleFiles[1].fileName,
+                    baselineFileName: null,
+                    isBaseline: false,
+                    comparisonData: new ComparisonData(
+                        visibleFiles[0].keyDatas[visibleFiles[0].parsedKeys[index]],
+                        visibleFiles[1].keyDatas[visibleFiles[1].parsedKeys[index]],
+                        comparisonStep, this.relative_baseline, noZero
+                    )
+                });
             }
         }
-        return comparisonDatas
+
+        return comparisonEntries;
     }
 
     updateComparisonType(comparisonType){
@@ -273,6 +370,7 @@ class LogParser {
     }
 
     updateChart(){
+        this.updateBaselineUI();
         updateParseKeyChart(this.files);
         let comparisonDatas = this.processComparisonData();
         if(comparisonDatas.length > 0){
@@ -285,6 +383,9 @@ class LogParser {
         if(fileName in this.files) {
             document.getElementById("selectLog_" + fileName).remove();
             delete this.files[fileName]
+            if(this.baselineFileName === fileName){
+                this.baselineFileName = null;
+            }
             clearDataMaxMinMean();
             this.updateChart();
         }
