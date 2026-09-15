@@ -179,15 +179,16 @@ function prepareComparisonChartData(comparisonEntries, comparisonType){
         let entry = comparisonEntries[index];
         let comparisonData = entry.comparisonData;
         let chartTitle = "Comparison " + comparisonType.replace("_", " ") + " Chart";
+        let lineName = "Error";
         if(entry.file1Name != null && entry.file2Name != null){
             if(entry.isBaseline){
                 if(entry.file1Name === entry.baselineFileName){
-                    chartTitle += ` (baseline: ${entry.file1Name} vs ${entry.file2Name})`;
+                    lineName += ` ${entry.file1Name} (baseline) vs ${entry.file2Name}`;
                 }else{
-                    chartTitle += ` (${entry.file1Name} vs baseline: ${entry.file2Name})`;
+                    lineName += ` ${entry.file1Name} vs ${entry.file2Name} (baseline)`;
                 }
             }else{
-                chartTitle += ` (${entry.file1Name} vs ${entry.file2Name})`;
+                lineName += ` ${entry.file1Name} vs ${entry.file2Name}`;
             }
         }
 
@@ -197,7 +198,7 @@ function prepareComparisonChartData(comparisonEntries, comparisonType){
             title: {text: chartTitle},
             axisY: {lineThickness: 1},
             data: [{
-                name: "Error",
+                name: lineName,
                 type: "line",
                 showInLegend: true,
                 dataPoints: comparisonData.getDataByComparisonType(comparisonType)
