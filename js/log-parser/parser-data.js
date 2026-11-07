@@ -1,4 +1,117 @@
-const numberRegExp = new RegExp('[+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?');
+// Keep values adjacent to their field: never search ahead into another metric.
+const metricNumberPattern = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?';
+
+function createMetricMatcher(key) {
+    // Older saved settings often include quotes and a trailing separator.
+    let name = key.trim().replace(/\s*[:=：]\s*$/, '').trim();
+    name = name.replace(/^["']|["']$/g, '').trim();
+    if (!name) return null;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const field = escaped.replace(/[\s_-]+/g, '[\\s_-]+');
+    const boundary = '[A-Za-z0-9_./-]';
+    return new RegExp('(?:^|[^A-Za-z0-9_./-])(?:"' + field + '"|\'' + field + '\'|' + field + ')' +
+        '(?!' + boundary + ')(?:\\s*[:=：]\\s*|\\s+)(.*)', 'i');
+}
+
+function parseMetricValue(text) {
+    // Only unwrap scalar representations; never silently select a vector element.
+    for (const pattern of metricValuePatterns) {
+        const match = pattern.exec(text);
+        if (match) {
+            const value = Number(match[1]);
+            return Number.isFinite(value) ? value : null;
+        }
+    }
+    return null;
+}
+
+// Compile once, rather than once per metric on every training step.
+const metricValuePatterns = (() => {
+    const number = metricNumberPattern;
+    return [
+        `(${number})(?:ms|us|s|T|%|tokens/s)?(?=$|[\\s,;|}\\]\\)])`,
+        `"(${number})"(?=$|[\\s,;|}\\]])`,
+        `'(${number})'(?=$|[\\s,;|}\\]])`,
+        `\\[\\s*(${number})\\s*\\](?=$|[\\s,;|}\\]])`,
+        `(?:tensor|np\\.float(?:16|32|64)|numpy\\.float(?:16|32|64))\\(\\s*(${number})(?:\\s*\\)|\\s*,\\s*(?:device|dtype|grad_fn|requires_grad)\\s*=)`
+    ].map(pattern => new RegExp('^' + pattern, 'i'));
+})();
+
+function metricRecord(record, prefix = '') {
+    const fields = [];
+    for (const [key, value] of Object.entries(record)) {
+        const path = prefix ? prefix + '/' + key : key;
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+            fields.push(...metricRecord(value, path));
+        } else if (typeof value === 'number' || typeof value === 'string' ||
+            (Array.isArray(value) && value.length === 1 && typeof value[0] === 'number')) {
+            fields.push(JSON.stringify(path) + ': ' + JSON.stringify(value));
+        }
+    }
+    return fields;
+}
+
+function splitMetricRow(line, delimiter) {
+    const cells = [];
+    let cell = '', quoted = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+            if (quoted && line[i + 1] === '"') { cell += '"'; i++; }
+            else quoted = !quoted;
+        } else if (char === delimiter && !quoted) { cells.push(cell.trim()); cell = ''; }
+        else cell += char;
+    }
+    if (quoted) return null;
+    cells.push(cell.trim());
+    return cells;
+}
+
+function normalizeMetricLines(lines) {
+    const clean = lines.map(line => line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/^\uFEFF/, ''));
+    const whole = clean.join('\n').trim();
+    if (/^[{\[]/.test(whole)) {
+        try {
+            const value = JSON.parse(whole);
+            const records = Array.isArray(value) ? value :
+                (Array.isArray(value.log_history) ? value.log_history : [value]);
+            return records.filter(record => record && typeof record === 'object' && !Array.isArray(record))
+                .map(record => metricRecord(record).join(', '));
+        } catch (_) { /* Console logs and JSONL are processed below. */ }
+    }
+    const content = clean.filter(line => line.trim() && !line.startsWith('#'));
+    if (content.length > 1) {
+        for (const delimiter of [',', '\t']) {
+            const header = splitMetricRow(content[0], delimiter);
+            const firstRow = splitMetricRow(content[1], delimiter);
+            if (header && firstRow && header.length > 1 && header.length === firstRow.length &&
+                header.every(name => /^[A-Za-z_][A-Za-z0-9_./ ()-]*$/.test(name)) &&
+                firstRow.some(value => parseMetricValue(value) !== null)) {
+                return content.slice(1).flatMap(line => {
+                    const row = splitMetricRow(line, delimiter);
+                    return row && row.length === header.length ?
+                        [header.map((name, i) => JSON.stringify(name) + ': ' + JSON.stringify(row[i])).join(', ')] : [];
+                });
+            }
+        }
+    }
+    let tableGroup = '';
+    return clean.map(line => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('{')) {
+            try { return metricRecord(JSON.parse(trimmed)).join(', '); }
+            catch (_) { /* Python dict output is handled by the text matcher. */ }
+        }
+        const table = /^\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*$/.exec(line);
+        if (table) {
+            const name = table[1].trim();
+            if (name.endsWith('/') && !table[2].trim()) { tableGroup = name; return ''; }
+            return JSON.stringify(name.includes('/') ? name : tableGroup + name) + ': ' + table[2].trim();
+        }
+        tableGroup = '';
+        return line;
+    });
+}
 
 function getMaxMinMeanError(erros){
     let min = null;
@@ -54,10 +167,13 @@ class KeyData {
 
         if (this.isRegex) {
             this.key = new RegExp(this.key)
+        } else {
+            this.metricMatcher = createMetricMatcher(this.key);
         }
     }
 
-    parseText(text) {
+    parseText(text, prepared = false) {
+        if (!this.isRegex && !prepared) text = normalizeMetricLines(text);
         for (let i = 0; i < text.length; i++) {
             this.parseLine(text[i]);
         }
@@ -80,17 +196,8 @@ class KeyData {
     }
 
     parseLineByFind(line) {
-        let pos = line.indexOf(this.key);
-        let loss = null;
-        if (pos !== -1) {
-            let res = numberRegExp.exec(line.substring(pos + this.key.length).trim().split(/\s+/)[0]);
-            if (res != null) {
-                loss = parseFloat(res[0]);
-            } else {
-                console.log(`Found text ${this.key}, but error parse value with: [${line}]`);
-            }
-        }
-        return loss;
+        const match = this.metricMatcher && this.metricMatcher.exec(line);
+        return match ? parseMetricValue(match[1]) : null;
     }
 
     parseLossByRegex(line) {
@@ -141,7 +248,8 @@ class FileData {
     constructor(fileName, fileText){
         this.fileName = fileName;
         this.fileTextOri = fileText;
-        this.fileText = fileText.split(/\n|\r\n/);
+        this.rawLines = fileText.split(/\r\n|[\n\r]/);
+        this.fileText = normalizeMetricLines(this.rawLines);
         this.dataKeysString = null;
         this.parsedKeys = null;
         this.keyDatas = {};
@@ -184,7 +292,7 @@ class FileData {
 
     parseKeyData(key, isRegExp){
         this.keyDatas[key] = new KeyData(key, isRegExp);
-        this.keyDatas[key].parseText(this.fileText);
+        this.keyDatas[key].parseText(isRegExp ? this.rawLines : this.fileText, true);
     }
 
     autoIdentificationFramework() {

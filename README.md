@@ -13,7 +13,7 @@ Compared with TensorBoard, TensorBoard needs to add related code to the model. T
 
 ## 3. Quick Start
 
-Just open [web](https://curryrice233.github.io/TrainingLogParser/), drag into your training log!
+Open [our improved version](https://addsubmuldiv.github.io/TrainingLogParser/) and drag in your training log. The [original project website](https://curryrice233.github.io/TrainingLogParser/) remains available.
 
 ## 4. Content Introduction
 
@@ -23,7 +23,12 @@ Just open [web](https://curryrice233.github.io/TrainingLogParser/), drag into yo
  
  - Select the log file and the corresponding loss curve chart will displayed. 
  
- - Click the gear icon to set the loss tag or obtain the loss value through regular expression matching. If the diagram looks strange, please check the loss tag or matching rule is correct.
+ - Click the gear icon to enter a metric name, such as `loss` or `grad norm`. Normal mode automatically handles single/double quotes, `:` / `=` separators, case, and space/underscore/hyphen variants. For example, `loss` reads `loss: 0.5`, `'loss': 0.5`, and `"loss": 0.5`. Old settings such as `'loss':` still work.
+ - For multiple metrics, enter `["loss","grad norm"]` in either the global field or the file settings. Use full names for scoped metrics, e.g. `actor/grad_norm`. `loss` does not match `eval_loss` or `actor/loss`, so separate metrics are not silently mixed. Each line contributes the first matching numeric value; missing or nonnumeric values are skipped. Regex mode remains available for custom formats.
+
+Parser regression tests (Node.js): `node --test tests/parser-data.test.cjs`.
+
+Normal mode also supports JSON/JSONL (nested paths use `/`), Transformers `trainer_state.json` log history, CSV/TSV with headers, and Stable-Baselines3 grouped console tables. Numeric strings, singleton arrays and scalar `tensor(...)` values are recognized. See [supported formats, upstream references and limitations](docs/LOG-FORMATS.md).
 
 ### Comparison Chart
 

@@ -85,7 +85,7 @@ class LogParser {
     constructor() {
         this.files = {};
         this.cookies = {};
-        this.defaultParseKeys = 'loss:';
+        this.defaultParseKeys = 'loss';
         this.comparisonType = 'normal';
         this.reverseComparison = false;
         this.relative_baseline = 0.02;

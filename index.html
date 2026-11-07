@@ -22,7 +22,7 @@
 <body id="dropZone">
 
 <a class="ads" href="https://github.com/CurryRice233/TrainingLogParser">💖Welcome to star this project</a>
-<a class="ads" style="top:25px;" target="_blank" href="https://curryrice233.github.io/TrainingLogParser/tracing.html">🔍Tracing analysis tool</a>
+<a class="ads" style="top:25px;" target="_blank" href="tracing.html">🔍Tracing analysis tool</a>
 
 <div id="rightPanel">
 
@@ -62,13 +62,16 @@
         </div>
 
         <div id="globalParseKeyDiv">
-            <label for="globalParseKeyText">Global parse key: </label><input type="text" id="globalParseKeyText" list="globalParseKey" ondblclick="value='';">
+            <label for="globalParseKeyText">Global parse key: </label><input type="text" id="globalParseKeyText" list="globalParseKey" placeholder='loss or ["loss","grad norm"]' title="Enter metric names; quotes and separators are handled automatically" ondblclick="value='';">
 
             <datalist id="globalParseKey">
-                <option name="Default" value='["loss:","norm:"]'>Default</option>
-                <option name="Megatron" value='["loss:","grad norm:","(ms):"]'>Megatron</option>
-                <option name="Verl" value='["critic/rewards/mean:","actor/grad_norm:", "actor/kl_loss", "response_length/mean:"]'>Verl</option>
-                <option name="Trl" value='["&#x27;reward&#x27;:","&#x27;loss&#x27;:","&#x27;completions/mean_length&#x27;:","[&#x27;kl&#x27;:]"]'>Trl</option>
+                <option name="Default" value='["loss","norm"]'>Default</option>
+                <option name="Megatron" value='["loss","grad norm","(ms)"]'>Megatron</option>
+                <option name="Verl" value='["critic/rewards/mean","actor/grad_norm", "actor/kl_loss", "response_length/mean"]'>Verl</option>
+                <option name="Trl" value='["reward","loss","completions/mean_length","kl"]'>Trl</option>
+                <option name="SB3" value='["rollout/ep_rew_mean","train/loss"]'>Stable-Baselines3</option>
+                <option name="RLlib" value='["env_runners/episode_return_mean"]'>Ray RLlib</option>
+                <option name="MindFormers" value='["loss","grad_norm"]'>MindFormers (dynamic graph)</option>
             </datalist>
         </div>
 
@@ -94,7 +97,7 @@
 <div id="centerPanel">
     <div id="uploadDiv" class="backgroundFilter">
         <img src="img/upload.png" width="20%" style="margin: 7%;" alt="upload"/>
-        <input id="selectFile" style="display: none;" name="file" type="file" accept="image/jpg"/>
+        <input id="selectFile" style="display: none;" name="file" type="file"/>
     </div>
     <div id="dataMaxMinMean"></div>
     <div id="meanError"></div>
@@ -111,7 +114,8 @@
     <p id="dialogContext"></p>
     <a id="dialogDownloadCSV">download CSV</a>
     <div >
-        <label for="parserKeyText">Parse key:</label><input type="text" id="parserKeyText"><br/>
+        <label for="parserKeyText">Parse key:</label><input type="text" id="parserKeyText" placeholder='loss or ["loss","grad norm"]'><br/>
+        <small>Enter a field name, e.g. loss or grad norm. Quotes and : / = are handled automatically. Spaces, underscores and hyphens are interchangeable. Use the full name for scoped metrics, e.g. actor/grad_norm.</small><br/>
         <label for="lossRangeText">Data Range:</label><input type="text" id="lossRangeText"><br/>
         <input type="checkbox" id="regex" name="regex"><label for="regex">Regex</label><br/>
     </div>

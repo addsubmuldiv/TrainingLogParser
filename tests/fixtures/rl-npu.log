@@ -1,0 +1,3 @@
+[INFO] step:1 | reward: 1.21 | loss: 0.51 | grad norm: [1.81] | entropy: 0.41
+[INFO] step:2 | reward: 1.41 | loss: 0.41 | grad norm: [1.61] | entropy: 0.31
+[INFO] step:3 | reward: 1.61 | loss: 0.31 | grad norm: [1.41] | entropy: 0.21
